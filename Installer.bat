@@ -35,16 +35,14 @@ function DownloadFile($url, $targetFile){
 Write-Host 'Anaconda Installer Setup for tmp project!'
 #Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 $downdir = "$env:HOMEPATH\Downloads"
-$input_path = ‘c:\ps\emails.txt’
-$output_file = ‘c:\ps\extracted_addresses.txt’
-$regex = 'href\\s*=\\s*(?:\"(?<1>[^\"]*)\"|(?<1>\\S+))'
-select-string -Path $input_path -Pattern $regex -AllMatches | % { $_.Matches } | % { $_.Value } > $output_file
 
 
 $wc=new-object system.net.webclient
 $wc.UseDefaultCredentials = $true
 $wc.downloadfile("https://anaconda.org/anaconda/python/files", "$env:temp\anaconda_website.html")
-
+$output_file = "$env:temp\hrefs.html"
+$regex = 'href\s*=\s*(?:"(?<1>[^"]*)"|(?<1>\S+))'
+select-string -Path "$env:temp\anaconda_website.html" -Pattern $regex -AllMatches | %{$_.Matches} | %{$_.groups[1].Captures} | %{$_.Value} > $output_file
 
 $request = [System.Net.WebRequest]::Create("https://anaconda.org/anaconda/python/files")
 $request.Method = "GET"

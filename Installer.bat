@@ -34,10 +34,23 @@ function DownloadFile($url, $targetFile){
 
 Write-Host 'Anaconda Installer Setup for tmp project!'
 #Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
-$downdir = Get-ItemPropertyValue 'HKCU:\software\microsoft\windows\currentversion\explorer\shell folders\' -Name '{374DE290-123F-4565-9164-39C4925E467B}'
-(Invoke-WebRequest –Uri "https://repo.anaconda.com/archive/").Links
+$downdir = "$env:HOMEPATH\Downloads"
+$input_path = ‘c:\ps\emails.txt’
+$output_file = ‘c:\ps\extracted_addresses.txt’
+$regex = 'href\\s*=\\s*(?:\"(?<1>[^\"]*)\"|(?<1>\\S+))'
+select-string -Path $input_path -Pattern $regex -AllMatches | % { $_.Matches } | % { $_.Value } > $output_file
 
-<#
+
+$wc=new-object system.net.webclient
+$wc.UseDefaultCredentials = $true
+$wc.downloadfile("https://anaconda.org/anaconda/python/files", "$env:temp\anaconda_website.html")
+
+
+$request = [System.Net.WebRequest]::Create("https://anaconda.org/anaconda/python/files")
+$request.Method = "GET"
+[System.Net.WebResponse]$response = $request.GetResponse()
+
+
 #$downdir = "C:\download_routine\"
 if ((gwmi win32_operatingsystem | select osarchitecture).osarchitecture -eq "64-bit"){
     Write-Host "Download 64 bit version of Miniconda"

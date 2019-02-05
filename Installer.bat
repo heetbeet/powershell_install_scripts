@@ -4,9 +4,54 @@ cp -f "%~dpnx0" "%temp%\%~n0.ps1"
 @"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -InputFormat None -ExecutionPolicy Bypass "%temp%\%~n0.ps1" %*
 echo 10 seconds till exit... && ping 127.0.0.1 -n 10 > nul && exit /B 
 ::-------------------------------------- #>
-#$scriptPath = split-path -parent $MyInvocation.MyCommand.Definitio
 
-function DownloadFile($url, $targetFile){
+function Unzip-File($zipfile, $outdir){
+    $shell = New-Object -COM Shell.Application;
+    $target = $shell.NameSpace($outdir)
+    New-Item $outdir -ItemType Directory -ea silentlycontinue
+    $zip = $shell.NameSpace($zipfile)
+    $target.CopyHere($zip.Items(), 16);
+}
+
+function Get-LatestWget(){
+    $url = "https://eternallybored.org/misc/wget/"
+    $r = (New-Object System.Net.WebClient).DownloadString($url)
+
+    $href = '<a\s+(?:[^>]*?\s+)?href="([^"]*)"'
+    $filt = $r    | select-string -Pattern $href -AllMatches | %{$_.Matches} | %{$_.groups[1].Value} | out-string
+    $filt = $filt | select-string -Pattern '.*wget.*win32.*zip' -AllMatches | %{$_.Matches} | %{$_.groups[0].Value} | Out-String
+    
+    
+    $filtarr = $filt -split '\r?\n' | %{
+        if($_ -notlike '*/old/*'){
+            $wgetName = ([uri]"$url$_").segments[-1] #-replace ".zip", ""
+            $wgetDir = "$env:userprofile\Downloads\" + ($wgetName -replace ".zip", "")
+            New-Item $wgetDir -ItemType Directory  -ea silentlycontinue
+            $wgetPath = "$wgetDir\$wgetName"
+            (New-Object System.Net.WebClient).DownloadFile("$url$_", "$wgetPath")
+            Unzip-File $wgetPath $wgetDir
+            break
+        }
+    }
+}
+
+function Test-Wget(){
+    $wgetExe = (Get-ChildItem -Path "$env:userprofile\Downloads\wget*win32\wget.exe").FullName
+    if([string]::IsNullOrEmpty($wgetExe)){
+        return $false
+    }
+    return $true
+}
+
+function Download-FileWget($url, $targetFile){
+    $wgetDir = (Get-ChildItem -Path "$env:userprofile\Downloads\wget*win32").FullName
+    if($env:Path -notlike "*$wgetDir*"){
+        $env:Path = "$wgetDir;$env:Path"
+    }
+    Invoke-Expression "wget '$url' -O '$targetFile'"
+}
+
+function Download-File($url, $targetFile){
    $uri = New-Object "System.Uri" "$url"
    $request = [System.Net.HttpWebRequest]::Create($uri)
    $request.set_Timeout(15000) #15 second timeout
@@ -32,14 +77,35 @@ function DownloadFile($url, $targetFile){
    $responseStream.Dispose()
 }
 
+function Download-FileRobust($url, $targetFile){
+    try{
+        Download-File $url $targetFile
+    }
+    catch{
+        try{
+            $wc=new-object system.net.webclient
+            $wc.UseDefaultCredentials = $true
+            $wc.DownloadFile("$url", "$targetfile");
+        }catch{        
+        
+            write-host "Windows could download file, trying wget..."
+            if(Test-Wget){}else{
+                Get-LatestWget
+            }
+            Download-FileWget $url $targetFile
+        }
+    }
+}
+Download-FileRobust "https://anaconda.org/anaconda/python/files" "$env:USERPROFILE\Downloads\temp6486.txt"
+
+
 Write-Host 'Anaconda Installer Setup for tmp project!'
-#Set-ExecutionPolicy Bypass -Scope Process -Force; iex ((New-Object System.Net.WebClient).DownloadString('https://chocolatey.org/install.ps1'))
 $downdir = "$env:HOMEPATH\Downloads"
 
 
 $wc=new-object system.net.webclient
 $wc.UseDefaultCredentials = $true
-$wc.downloadfile("https://anaconda.org/anaconda/python/files", "$env:temp\anaconda_website.html")
+$wc.Download-File("https://anaconda.org/anaconda/python/files", "$env:temp\anaconda_website.html")
 $output_file = "$env:temp\hrefs.html"
 $regex = 'href\s*=\s*(?:"(?<1>[^"]*)"|(?<1>\S+))'
 select-string -Path "$env:temp\anaconda_website.html" -Pattern $regex -AllMatches | %{$_.Matches} | %{$_.groups[1].Captures} | %{$_.Value} > $output_file
@@ -63,7 +129,7 @@ else{
 
 Write-Host "-----------------------------------------------"
 Write-Host "1) Download Miniconda to $AnacondaInstaller"
-#DownloadFile "$AnacondaUrl" "$AnacondaInstaller"
+#Download-File "$AnacondaUrl" "$AnacondaInstaller"
 Write-Host "-----------------------------------------------"
 
 Write-Host "-----------------------------------------------"
@@ -82,5 +148,4 @@ Write-Host "3) Install Python packages:"
 #Invoke-Expression "python -m conda install -c conda-forge -y gitpython"
 
 Write-Host "-----------------------------------------------"
-
 #>

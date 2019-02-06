@@ -13,12 +13,18 @@ function Unzip-File($zipfile, $outdir){
     $target.CopyHere($zip.Items(), 16);
 }
 
+
+function  get-hrefs($inputStr){
+    $href = '<a\s+(?:[^>]*?\s+)?href="([^"]*)"'
+    return $inputStr | select-string -Pattern $href -AllMatches | %{$_.Matches} | %{$_.groups[1].Value}
+}
+
+
 function Get-LatestWget(){
     $url = "https://eternallybored.org/misc/wget/"
     $r = (New-Object System.Net.WebClient).DownloadString($url)
 
-    $href = '<a\s+(?:[^>]*?\s+)?href="([^"]*)"'
-    $filt = $r    | select-string -Pattern $href -AllMatches | %{$_.Matches} | %{$_.groups[1].Value} | out-string
+    $filt = get-hrefs $r  | out-string
     $filt = $filt | select-string -Pattern '.*wget.*win32.*zip' -AllMatches | %{$_.Matches} | %{$_.groups[0].Value} | Out-String
     
     
@@ -28,12 +34,14 @@ function Get-LatestWget(){
             $wgetDir = "$env:userprofile\Downloads\" + ($wgetName -replace ".zip", "")
             New-Item $wgetDir -ItemType Directory  -ea silentlycontinue
             $wgetPath = "$wgetDir\$wgetName"
+            Write-Host "Download $url$_ as $wgetPath"
             (New-Object System.Net.WebClient).DownloadFile("$url$_", "$wgetPath")
             Unzip-File $wgetPath $wgetDir
             break
         }
     }
 }
+
 
 function Test-Wget(){
     $wgetExe = (Get-ChildItem -Path "$env:userprofile\Downloads\wget*win32\wget.exe").FullName
@@ -116,7 +124,75 @@ function Download-FileRobust($url, $targetFile){
         }
     }
 }
-Download-FileRobust "https://anaconda.org/anaconda/python/files" "$env:USERPROFILE\Downloads\temp643426.txt"
+
+function Test-ValidUrl($url){
+    #https://stackoverflow.com/questions/161738/what-is-the-best-regular-expression-to-check-if-a-string-is-a-valid-url
+    $url -match '(http[s]?|[s]?ftp[s]?)(:\/\/)([^\s,]+)'
+}
+
+function Fetch-UrlContent($url){
+    $fileName = "$env:temp\"+([uri]"$url").segments[-1]
+    $fileName = $fileName -replace "/", ""
+    $fileName = $fileName +".temp"
+    Write-Host $fileName 
+    Download-FileRobust $url $fileName
+    Get-Content -Path $fileName    
+}
+
+function Fetch-Links($url){
+    $dump = Fetch-UrlContent $url 
+    $hrefs = get-hrefs $dump
+    $hrefs | %{if(Test-ValidUrl $_){$_}else{"$url$_"}}
+}
+
+function Fetch-LinksBare($url){
+    $dump = Fetch-UrlContent $url 
+    get-hrefs $dump
+}
+
+function get-FullUrl($url, $path){
+    if(Test-ValidUrl $path){
+        $path
+    }else{
+        "$url/$path"
+    }
+}
+
+function Download-LatestPythonZip(){
+    $pyurl = "https://www.python.org/downloads/windows/"
+    $pywinhtml = Fetch-UrlContent $pyurl
+    $dlpagelink = $pywinhtml -split "`n" | %{if($_ -like "*Latest*Python*3*"){get-FullUrl $pyurl (get-hrefs $_)}}
+    $link =get-hrefs (Fetch-UrlContent $dlpagelink) | %{if($_ -like "*embed*64*zip" ){$_}}
+    
+    $pyName = ([uri]"$link").segments[-1]
+    $pyDir = "$env:userprofile\Applications\UntitledApp\" + ($pyName -replace ".zip", "")
+    New-Item $pyDir -ItemType Directory -ea silentlycontinue
+    $pyPath = "$pyDir\$pyName"
+    Write-Host "Download $link as $pyPath"
+    
+    #Download-FileRobust "$link" "$pyPath"
+    #Unzip-File $pyPath $pyDir
+    
+    New-Item "$pyDir\Lib" -ItemType Directory -ea silentlycontinue
+    #Unzip-File (Get-ChildItem -Path "$pyDir/python3*.zip").FullName "$pyDir\Lib"
+    
+    
+    #"https://github.com/heetbeet/powershell_install_scripts/blob/master/anaconda_dlls_64bit/api-ms-win-crt-utility-l1-1-0.dll?raw=true"
+    $githubdlls = Fetch-LinksBare "https://github.com/heetbeet/powershell_install_scripts/tree/master/anaconda_dlls_64bit" | %{if($_ -like "*.dll"){$_}}
+    $githubdlls | %{
+        $dllname = (([uri]"https://github.com/$_").segments[-1])
+        
+        Get-ChildItem -Path "$pyDir\$dllname" -ev err -ea silentlycontinue | out-null
+        if($err.count -gt 0){  #if not packaged with python
+            Download-FileRobust "https://github.com/$_`?raw=true" "$pyDir\$dllname"
+        }
+    }       
+}
+
+
+Download-LatestPythonZip
+
+
 
 $PSVersionTable.PSVersion
 

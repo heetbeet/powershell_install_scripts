@@ -171,26 +171,37 @@ function Download-LatestPythonZip(){
     Write-Host "Download $link as $pyPath"
     
     #Download-FileRobust "$link" "$pyPath"
-    #Unzip-File $pyPath $pyDir
+    Unzip-File $pyPath $pyDir
     
     New-Item "$pyDir\Lib" -ItemType Directory -ea silentlycontinue
-    #Unzip-File (Get-ChildItem -Path "$pyDir/python3*.zip").FullName "$pyDir\Lib"
+    Unzip-File (Get-ChildItem -Path "$pyDir\python3*.zip").FullName "$pyDir\Lib"
     
-    
-    #"https://github.com/heetbeet/powershell_install_scripts/blob/master/anaconda_dlls_64bit/api-ms-win-crt-utility-l1-1-0.dll?raw=true"
-    $githubdlls = Fetch-LinksBare "https://github.com/heetbeet/powershell_install_scripts/tree/master/anaconda_dlls_64bit" | %{if($_ -like "*.dll"){$_}}
-    $githubdlls | %{
-        $dllname = (([uri]"https://github.com/$_").segments[-1])
-        
-        Get-ChildItem -Path "$pyDir\$dllname" -ev err -ea silentlycontinue | out-null
-        if($err.count -gt 0){  #if not packaged with python
-            Download-FileRobust "https://github.com/$_`?raw=true" "$pyDir\$dllname"
-        }
-    }       
+    Download-FileRobust "https://github.com/heetbeet/powershell_install_scripts/blob/master/anaconda_dlls/dlls_64bit.zip`?raw=true" "$pyDir\dlls_64bit.zip"
+    Unzip-File "$pyDir\dlls_64bit.zip" "$pyDir"
 }
 
 
-Download-LatestPythonZip
+Download-FileRobust "https://bootstrap.pypa.io/get-pip.py" "$env:temp\get-pip.py"
+
+$pyDir = (Get-ChildItem -Path "$env:userprofile\Applications\UntitledApp\python*3*").FullName
+if($env:Path -notlike "*$pyDir*"){
+        $env:Path = "$pyDir;$env:Path"
+}
+Invoke-Expression "python '$env:temp\get-pip.py'"
+
+$pyDir = (Get-ChildItem -Path "$env:userprofile\Applications\UntitledApp\python*3*\Scripts").FullName
+if($env:Path -notlike "*$pyDir*"){
+        $env:Path = "$pyDir;$env:Path"
+}
+
+$pyDir = (Get-ChildItem -Path "$env:userprofile\Applications\UntitledApp\python*3*\Scripts\site-packages").FullName
+if($env:PYTHONPATH -notlike "*$pyDir*"){
+        $env:PYTHONPATH = "$pyDir;$env:Path"
+}
+Invoke-Expression "python -m pip install jupyter"
+
+python -m pip
+
 
 
 
